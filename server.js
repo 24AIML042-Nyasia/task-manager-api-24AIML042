@@ -1,16 +1,20 @@
 const express = require('express');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+const Task = require('./models/Task');
+
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+
+// ==================== CONNECT TO MONGODB ====================
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log('MongoDB connected successfully!'))
+  .catch((err) => console.error('MongoDB connection error:', err));
+// ==================== END CONNECT TO MONGODB ====================
 
 app.use(express.json());
-
-// ---------- In-memory data store ----------
-let tasks = [
-    {id: 1, title: "Complete practical 1", completed: true},
-    {id: 2, title: "Complete practical 2", completed: false},
-    {id: 3, title: "Complete practical 3", completed: false},
-    {id: 4, title: "Build Express REST API", completed: true},
-];
 
 
 // ==================== LOGGER MIDDLEWARE ====================
@@ -33,110 +37,124 @@ app.use((req, res, next) => {
       message: 'Content-Type must be application/json'
     });
   }
-
   next();
 });
 // ==================== END CONTENT-TYPE MIDDLEWARE ====================
 
 
 // ==================== GET /tasks ====================
-app.get('/tasks', (req, res) => {
-  res.status(200).json({
-    success: true,
-    count: tasks.length,
-    data: tasks
-  });
-});
-// ==================== END GET /tasks ====================
-
-
-// ==================== POST /tasks ====================
-app.post('/tasks', (req, res, next) => {
+app.get('/tasks', async (req, res, next) => {
   try {
-    const { title, completed } = req.body;
-
-    if (!title || typeof title !== 'string' || title.trim() === '') {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'Field "title" is required and must be a non-empty string.'
-      });
-    }
-
-    const newTask = {
-      id: tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1,
-      title: title.trim(),
-      completed: typeof completed === 'boolean' ? completed : false
-    };
-
-    tasks.push(newTask);
-
-    res.status(201).json({
+    const tasks = await Task.find();
+    res.status(200).json({
       success: true,
-      message: 'Task created successfully',
-      data: newTask
+      count: tasks.length,
+      data: tasks
     });
   } catch (err) {
     next(err);
   }
 });
-// ==================== END POST /tasks ====================
+// ==================== END GET /tasks ====================
 
 
-// ==================== VALIDATE TASK ID (used by PUT/DELETE) ====================
-const validateTaskId = (req, res, next) => {
-  const id = Number(req.params.id);
-
-  if (isNaN(id)) {
-    return res.status(400).json({
-      error: 'Bad Request',
-      message: 'Invalid Task ID'
-    });
-  }
-
-  next();
-};
-// ==================== END VALIDATE TASK ID ====================
-
-
-// ==================== PUT /tasks/:id ====================
-app.put('/tasks/:id', validateTaskId, (req, res, next) => {
+// ==================== GET /tasks/:id ====================
+app.get('/tasks/:id', async (req, res, next) => {
   try {
-    const { title, completed } = req.body;
-    const taskIndex = tasks.findIndex(t => t.id === parseInt(req.params.id));
+    // Catch malformed ObjectIds before hitting the DB
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Invalid task ID format'
+      });
+    }
 
-    if (taskIndex === -1) {
+    const task = await Task.findById(req.params.id);
+
+    if (!task) {
       return res.status(404).json({
         error: 'Not Found',
         message: `Task with id ${req.params.id} not found.`
       });
     }
 
-    if (title !== undefined) {
-      if (typeof title !== 'string' || title.trim() === '') {
-        return res.status(400).json({
-          error: 'Bad Request',
-          message: 'Field "title" must be a non-empty string.'
-        });
-      }
-      tasks[taskIndex].title = title.trim();
+    res.status(200).json({
+      success: true,
+      data: task
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+// ==================== END GET /tasks/:id ====================
+
+
+// ==================== POST /tasks ====================
+app.post('/tasks', async (req, res, next) => {
+  try {
+    const { id, title, description, completed, priority } = req.body;
+
+    const task = await Task.create({ id, title, description, completed, priority });
+
+    res.status(201).json({
+      success: true,
+      message: 'Task created successfully',
+      data: task
+    });
+  } catch (err) {
+    // Return Mongoose validation errors as structured JSON
+    if (err.name === 'ValidationError') {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({
+        error: 'Validation Error',
+        messages: errors
+      });
+    }
+    next(err);
+  }
+});
+// ==================== END POST /tasks ====================
+
+
+// ==================== PUT /tasks/:id ====================
+app.put('/tasks/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Invalid task ID format'
+      });
     }
 
-    if (completed !== undefined) {
-      if (typeof completed !== 'boolean') {
-        return res.status(400).json({
-          error: 'Bad Request',
-          message: 'Field "completed" must be a boolean.'
-        });
-      }
-      tasks[taskIndex].completed = completed;
+    const { title, description, completed, priority } = req.body;
+
+    // runValidators ensures schema rules apply on update too
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { title, description, completed, priority },
+      { new: true, runValidators: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: `Task with id ${req.params.id} not found.`
+      });
     }
 
     res.status(200).json({
       success: true,
       message: 'Task updated successfully',
-      data: tasks[taskIndex]
+      data: task
     });
   } catch (err) {
+    if (err.name === 'ValidationError') {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({
+        error: 'Validation Error',
+        messages: errors
+      });
+    }
     next(err);
   }
 });
@@ -144,23 +162,28 @@ app.put('/tasks/:id', validateTaskId, (req, res, next) => {
 
 
 // ==================== DELETE /tasks/:id ====================
-app.delete('/tasks/:id', validateTaskId, (req, res, next) => {
+app.delete('/tasks/:id', async (req, res, next) => {
   try {
-    const taskIndex = tasks.findIndex(t => t.id === parseInt(req.params.id));
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Invalid task ID format'
+      });
+    }
 
-    if (taskIndex === -1) {
+    const task = await Task.findByIdAndDelete(req.params.id);
+
+    if (!task) {
       return res.status(404).json({
         error: 'Not Found',
         message: `Task with id ${req.params.id} not found.`
       });
     }
 
-    const deleted = tasks.splice(taskIndex, 1)[0];
-
     res.status(200).json({
       success: true,
       message: 'Task deleted successfully',
-      data: deleted
+      data: task
     });
   } catch (err) {
     next(err);
@@ -186,10 +209,9 @@ app.use((req, res) => {
 // ==================== GLOBAL ERROR HANDLER (must stay last) ====================
 app.use((err, req, res, next) => {
   console.error(err.stack);
-
   res.status(500).json({
     success: false,
-    message: 'Something Went Wrong'
+    message: 'Something went wrong'
   });
 });
 // ==================== END GLOBAL ERROR HANDLER ====================

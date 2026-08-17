@@ -1,11 +1,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 require('dotenv').config();
 
 const Task = require('./models/Task');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ==================== CORS ====================
+app.use(cors());
+// ==================== END CORS ====================
 
 // ==================== CONNECT TO MONGODB ====================
 mongoose

@@ -33,7 +33,7 @@ const taskSchema = new mongoose.Schema({
   }
 });
 
-// Supplementary: pre-save hook — trim whitespace from title
+// Supplementary: pre-save hook, trims whitespace from title
 taskSchema.pre('save', async function () {
   if (this.title) {
     this.title = this.title.trim();

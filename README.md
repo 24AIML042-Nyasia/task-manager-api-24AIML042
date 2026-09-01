@@ -1,6 +1,7 @@
 # Task Manager API
 
 Express + MongoDB REST API for the full-stack Task Manager app.
+Includes JWT authentication, bcrypt password hashing, and protected task routes.
 
 ## Requirements
 
@@ -23,11 +24,23 @@ Create a `.env` file in the root of this folder:
 ```env
 MONGO_URI=mongodb://localhost:27017/taskmanager
 PORT=5000
+JWT_SECRET=your_secret_key_here
 ```
 
 Replace `MONGO_URI` with your Atlas connection string if using cloud MongoDB.
+The `.env` file is excluded from git via `.gitignore` — never commit your `JWT_SECRET`.
 
-## Endpoints
+## Auth Endpoints (public)
+
+| Method | Route           | Description                        |
+|--------|-----------------|------------------------------------|
+| POST   | /auth/register  | Register a new user, returns JWT   |
+| POST   | /auth/login     | Login, returns JWT                 |
+| GET    | /auth/me        | Get logged-in user (token required)|
+
+## Task Endpoints (JWT protected)
+
+All task routes require `Authorization: Bearer <token>` in the request header.
 
 | Method | Route        | Description       |
 |--------|--------------|-------------------|
@@ -37,7 +50,16 @@ Replace `MONGO_URI` with your Atlas connection string if using cloud MongoDB.
 | PUT    | /tasks/:id   | Update a task     |
 | DELETE | /tasks/:id   | Delete a task     |
 
-## POST / PUT Body
+## Register / Login Body
+
+```json
+{
+  "email": "user@example.com",
+  "password": "yourpassword"
+}
+```
+
+## POST / PUT Task Body
 
 ```json
 {
@@ -52,6 +74,12 @@ Replace `MONGO_URI` with your Atlas connection string if using cloud MongoDB.
 - `title` is required, minimum 3 characters
 - `priority` must be one of: `low`, `medium`, `high`
 - `id` is a required unique number (creation only)
+
+## Middleware
+
+- `authMiddleware` verifies the Bearer token on all task routes
+- `validateTask` checks title exists and meets length requirement before hitting the DB
+- `validateRegister` and `validateLogin` validate auth inputs
 
 ## Frontend Repo
 

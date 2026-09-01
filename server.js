@@ -4,6 +4,9 @@ const cors = require('cors');
 require('dotenv').config();
 
 const Task = require('./models/Task');
+const authMiddleware = require('./middleware/auth');
+const { validateTask } = require('./middleware/validate');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,8 +50,13 @@ app.use((req, res, next) => {
 // ==================== END CONTENT-TYPE MIDDLEWARE ====================
 
 
+// ==================== AUTH ROUTES (public) ====================
+app.use('/auth', authRoutes);
+// ==================== END AUTH ROUTES ====================
+
+
 // ==================== GET /tasks ====================
-app.get('/tasks', async (req, res, next) => {
+app.get('/tasks', authMiddleware, async (req, res, next) => {
   try {
     const tasks = await Task.find();
     res.status(200).json({
@@ -64,7 +72,7 @@ app.get('/tasks', async (req, res, next) => {
 
 
 // ==================== GET /tasks/:id ====================
-app.get('/tasks/:id', async (req, res, next) => {
+app.get('/tasks/:id', authMiddleware, async (req, res, next) => {
   try {
     // Catch malformed ObjectIds before hitting the DB
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -95,7 +103,7 @@ app.get('/tasks/:id', async (req, res, next) => {
 
 
 // ==================== POST /tasks ====================
-app.post('/tasks', async (req, res, next) => {
+app.post('/tasks', authMiddleware, validateTask, async (req, res, next) => {
   try {
     const { id, title, description, completed, priority } = req.body;
 
@@ -122,7 +130,7 @@ app.post('/tasks', async (req, res, next) => {
 
 
 // ==================== PUT /tasks/:id ====================
-app.put('/tasks/:id', async (req, res, next) => {
+app.put('/tasks/:id', authMiddleware, validateTask, async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -167,7 +175,7 @@ app.put('/tasks/:id', async (req, res, next) => {
 
 
 // ==================== DELETE /tasks/:id ====================
-app.delete('/tasks/:id', async (req, res, next) => {
+app.delete('/tasks/:id', authMiddleware, async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({

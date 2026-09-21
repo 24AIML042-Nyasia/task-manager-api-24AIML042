@@ -18,6 +18,27 @@ const taskSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  status: {
+    type: String,
+    enum: {
+      values: ['pending', 'ongoing', 'completed'],
+      message: 'Status must be one of: pending, ongoing, completed.'
+    },
+    default: 'pending'
+  },
+  pendingAt: {
+    type: Date,
+    default: Date.now  // set when task is created (starts as pending)
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  },
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Task must belong to a user.']
+  },
   createdAt: {
     type: Date,
     default: Date.now

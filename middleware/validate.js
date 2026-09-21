@@ -1,6 +1,6 @@
 // Validates Task creation / update inputs
 const validateTask = (req, res, next) => {
-  const { title } = req.body;
+  const { title, status } = req.body;
   if (!title || typeof title !== 'string' || title.trim().length === 0) {
     return res.status(400).json({
       success: false,
@@ -11,6 +11,13 @@ const validateTask = (req, res, next) => {
     return res.status(400).json({
       success: false,
       error: 'Validation failed: Task title must be at least 3 characters long.'
+    });
+  }
+  const validStatuses = ['pending', 'ongoing', 'completed'];
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed: Status must be one of: pending, ongoing, completed.'
     });
   }
   next();
@@ -53,4 +60,22 @@ const validateLogin = (req, res, next) => {
   next();
 };
 
-module.exports = { validateTask, validateRegister, validateLogin };
+// Validates password reset input
+const validateResetPassword = (req, res, next) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed: New password is required.'
+    });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed: Password must be at least 6 characters long.'
+    });
+  }
+  next();
+};
+
+module.exports = { validateTask, validateRegister, validateLogin, validateResetPassword };

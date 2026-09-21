@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/auth');
-const { validateRegister, validateLogin } = require('../middleware/validate');
+const { validateRegister, validateLogin, validateResetPassword } = require('../middleware/validate');
+const { sendPasswordResetEmail } = require('../utils/mailer');
 
 // POST /auth/register - Register a new user
 router.post('/register', validateRegister, async (req, res, next) => {
@@ -97,6 +99,89 @@ router.get('/me', authMiddleware, async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'User not found.' });
     }
     res.status(200).json({ success: true, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /auth/forgot-password - Generate reset token and email the link
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required.' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    // Always respond with success to prevent email enumeration
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: 'If that email is registered, a reset link has been sent.'
+      });
+    }
+
+    // Generate a secure random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Save token and expiry to user
+    user.resetToken = resetToken;
+    user.resetTokenExpiry = resetTokenExpiry;
+    await user.save();
+
+    // Send the email
+    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+    try {
+      await sendPasswordResetEmail(user.email, resetLink);
+    } catch (mailErr) {
+      console.error('Password reset email failed:', mailErr.message);
+      return res.status(500).json({
+        success: false,
+        error: `Reset link generated but email could not be sent: ${mailErr.message}`
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'If that email is registered, a reset link has been sent.'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /auth/reset-password/:token - Validate token and save new password
+router.post('/reset-password/:token', validateResetPassword, async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // Find user with matching token that has not expired
+    const user = await User.findOne({
+      resetToken: token,
+      resetTokenExpiry: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Reset link is invalid or has expired. Please request a new one.'
+      });
+    }
+
+    // Hash new password and clear reset fields
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    user.resetToken = null;
+    user.resetTokenExpiry = null;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful. You can now log in with your new password.'
+    });
   } catch (err) {
     next(err);
   }

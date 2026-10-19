@@ -9,6 +9,10 @@ const { validateTask } = require('./middleware/validate');
 const authRoutes = require('./routes/authRoutes');
 const { sendStatusChangeEmail } = require('./utils/mailer');
 const { cache, KEYS, recordHit, recordMiss, getStats } = require('./utils/cache');
+const taskEvents = require('./events/taskEvents');
+
+// ── register all event listeners ─────────────────────────────────────────────
+require('./events/taskListeners');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -146,11 +150,17 @@ app.post('/tasks', authMiddleware, validateTask, async (req, res, next) => {
     // Invalidate the all-tasks cache for this user
     cache.del(KEYS.ALL_TASKS + '_' + req.user.id);
 
+    // [API] log and respond immediately — before the event handler runs
+    console.log(`[API] Task created, response sent at ${new Date().toISOString()}`);
+
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
       data: task
     });
+
+    // Emit event AFTER response — handler runs asynchronously and does not block
+    taskEvents.emit('task-created', task);
   } catch (err) {
     // Return Mongoose validation errors as structured JSON
     if (err.name === 'ValidationError') {
@@ -274,6 +284,10 @@ app.delete('/tasks/:id', authMiddleware, async (req, res, next) => {
     // Invalidate both the all-tasks cache and the individual task cache
     cache.del(KEYS.ALL_TASKS + '_' + req.user.id);
     cache.del(KEYS.TASK(req.params.id + '_' + req.user.id));
+
+    // [API] log and emit delete event after response
+    console.log(`[API] Task deleted, response sent at ${new Date().toISOString()}`);
+    taskEvents.emit('task-deleted', task);
   } catch (err) {
     next(err);
   }

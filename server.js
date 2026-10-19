@@ -8,6 +8,7 @@ const authMiddleware = require('./middleware/auth');
 const { validateTask } = require('./middleware/validate');
 const authRoutes = require('./routes/authRoutes');
 const { sendStatusChangeEmail } = require('./utils/mailer');
+const { cache, KEYS, recordHit, recordMiss, getStats } = require('./utils/cache');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -59,11 +60,28 @@ app.use('/auth', authRoutes);
 // ==================== GET /tasks ====================
 app.get('/tasks', authMiddleware, async (req, res, next) => {
   try {
+    const cacheKey = KEYS.ALL_TASKS + '_' + req.user.id;
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      recordHit();
+      return res.status(200).json({
+        success: true,
+        count: cached.length,
+        data: cached,
+        fromCache: true
+      });
+    }
+
+    recordMiss();
     const tasks = await Task.find({ owner: req.user.id });
+    cache.set(cacheKey, tasks);
+
     res.status(200).json({
       success: true,
       count: tasks.length,
-      data: tasks
+      data: tasks,
+      fromCache: false
     });
   } catch (err) {
     next(err);
@@ -75,7 +93,6 @@ app.get('/tasks', authMiddleware, async (req, res, next) => {
 // ==================== GET /tasks/:id ====================
 app.get('/tasks/:id', authMiddleware, async (req, res, next) => {
   try {
-    // Catch malformed ObjectIds before hitting the DB
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
         error: 'Bad Request',
@@ -83,6 +100,19 @@ app.get('/tasks/:id', authMiddleware, async (req, res, next) => {
       });
     }
 
+    const cacheKey = KEYS.TASK(req.params.id + '_' + req.user.id);
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      recordHit();
+      return res.status(200).json({
+        success: true,
+        data: cached,
+        fromCache: true
+      });
+    }
+
+    recordMiss();
     const task = await Task.findOne({ _id: req.params.id, owner: req.user.id });
 
     if (!task) {
@@ -92,9 +122,12 @@ app.get('/tasks/:id', authMiddleware, async (req, res, next) => {
       });
     }
 
+    cache.set(cacheKey, task);
+
     res.status(200).json({
       success: true,
-      data: task
+      data: task,
+      fromCache: false
     });
   } catch (err) {
     next(err);
@@ -109,6 +142,9 @@ app.post('/tasks', authMiddleware, validateTask, async (req, res, next) => {
     const { id, title, description, completed, priority, status } = req.body;
 
     const task = await Task.create({ id, title, description, completed, priority, status, owner: req.user.id });
+
+    // Invalidate the all-tasks cache for this user
+    cache.del(KEYS.ALL_TASKS + '_' + req.user.id);
 
     res.status(201).json({
       success: true,
@@ -182,6 +218,10 @@ app.put('/tasks/:id', authMiddleware, validateTask, async (req, res, next) => {
       data: task
     });
 
+    // Invalidate both the all-tasks cache and the individual task cache
+    cache.del(KEYS.ALL_TASKS + '_' + req.user.id);
+    cache.del(KEYS.TASK(req.params.id + '_' + req.user.id));
+
     // Send email notification if status changed — fire and forget, does not block response
     if (status && status !== oldStatus) {
       const User = require('./models/User');
@@ -230,11 +270,34 @@ app.delete('/tasks/:id', authMiddleware, async (req, res, next) => {
       message: 'Task deleted successfully',
       data: task
     });
+
+    // Invalidate both the all-tasks cache and the individual task cache
+    cache.del(KEYS.ALL_TASKS + '_' + req.user.id);
+    cache.del(KEYS.TASK(req.params.id + '_' + req.user.id));
   } catch (err) {
     next(err);
   }
 });
 // ==================== END DELETE /tasks/:id ====================
+
+
+// ==================== GET /cache-stats (debug endpoint) ====================
+app.get('/cache-stats', authMiddleware, (req, res) => {
+  const stats = getStats();
+  const total = stats.hits + stats.misses;
+  res.status(200).json({
+    success: true,
+    data: {
+      hits:       stats.hits,
+      misses:     stats.misses,
+      total:      total,
+      hitRate:    total > 0 ? ((stats.hits / total) * 100).toFixed(1) + '%' : '0%',
+      cachedKeys: stats.keys,
+      keyCount:   stats.keyCount
+    }
+  });
+});
+// ==================== END GET /cache-stats ====================
 
 
 // ==================== 404 HANDLER ====================

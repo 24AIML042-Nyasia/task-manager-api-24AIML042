@@ -10,6 +10,35 @@ Includes JWT authentication, bcrypt password hashing, protected task routes, and
 
 ## Setup and Run
 
+### Option 1: Docker (recommended, runs everything with one command)
+
+Make sure Docker Desktop is running, then from the `TASKMGR` root folder:
+
+```bash
+# Copy the example env file and fill in your secrets
+cp .env.example .env
+# Edit .env with your JWT_SECRET, EMAIL_USER, EMAIL_PASS
+
+# Build and start all 3 services
+docker-compose up --build
+```
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:5000
+- MongoDB: localhost:27017
+
+To stop everything:
+```bash
+docker-compose down
+```
+
+To stop and delete the MongoDB data volume:
+```bash
+docker-compose down -v
+```
+
+### Option 2: Local development
+
 ```bash
 npm install
 npm start

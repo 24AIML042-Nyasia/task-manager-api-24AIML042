@@ -339,6 +339,5 @@ app.use((err, req, res, next) => {
 // ==================== END GLOBAL ERROR HANDLER ====================
 
 
-app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
-});
+// Export app for testing — listen is handled by index.js
+module.exports = app;

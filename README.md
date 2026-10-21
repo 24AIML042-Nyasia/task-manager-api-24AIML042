@@ -1,7 +1,9 @@
 # Task Manager API
 
+[![CI Pipeline](https://github.com/24AIML042-Nyasia/task-manager-api-24AIML042/actions/workflows/ci.yml/badge.svg)](https://github.com/24AIML042-Nyasia/task-manager-api-24AIML042/actions/workflows/ci.yml)
+
 Express + MongoDB REST API for the full-stack Task Manager app.
-Includes JWT authentication, bcrypt password hashing, protected task routes, and in-memory caching with node-cache.
+Includes JWT authentication, bcrypt password hashing, protected task routes, in-memory caching with node-cache, and a GitHub Actions CI pipeline.
 
 ## Requirements
 
@@ -204,6 +206,24 @@ A 60-second TTL means stale data is served for at most 60 seconds after a write 
 ### Why node-cache is not suitable for multi-instance deployments
 
 node-cache stores data in the memory of a single Node.js process. If the app runs on multiple servers (e.g. behind a load balancer), each server has its own separate cache. A write on Server A invalidates Server A's cache but not Server B's, so Server B continues to serve stale data. A shared cache like Redis solves this by storing data outside the process in a central store all instances can access.
+
+## CI Pipeline
+
+Every push and pull request to `main` triggers the GitHub Actions CI pipeline defined in `.github/workflows/ci.yml`.
+
+**Steps:**
+1. Checkout code
+2. Setup Node.js 18
+3. `npm install`
+4. `npm test` — runs all Jest/Supertest tests
+
+**Test suites:**
+- `tests/auth.test.js` — validates register/login/me endpoint behaviour (400/401 responses)
+- `tests/tasks.test.js` — confirms all task routes are JWT protected (401 without token)
+
+Tests do not require a live MongoDB connection — they only exercise middleware-level rejection, so the pipeline runs cleanly without any database service.
+
+The badge at the top of this README reflects the current pipeline status.
 
 ## Frontend Repo
 

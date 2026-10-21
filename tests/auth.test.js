@@ -13,7 +13,7 @@ describe('Auth routes', () => {
       const res = await request(app)
         .post('/auth/register')
         .send({ password: 'password123' });
-      expect(res.statusCode).toBe(200); // deliberately wrong for CI failure screenshot
+      expect(res.statusCode).toBe(400);
       expect(res.body.success).toBe(false);
     });
 
